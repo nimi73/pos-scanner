@@ -1,123 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>POS QR Scanner</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <!-- ✅ CORRECTED: load html5-qrcode from unpkg -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>QR Scanner POS</title>
+  <!-- Load the HTML5 QR Code library (version 2.3.8) from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 1em; }
-    h1 { font-size: 1.4em; }
-    #reader {
-      width: 100%; max-width: 400px;
-      height: 300px; margin: 1em 0;
-      background: #eee; display: none;
-    }
-    #cart { background: #f4f4f4; padding: 10px; min-height: 2em; margin-bottom: 1em; }
-    #cart li { margin: 4px 0; }
-    button { padding: 8px 12px; font-size: 1em; margin-right: .5em; }
+    /* Basic mobile-friendly styling */
+    body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
+    h1 { font-size: 1.5em; }
+    #reader { width: 100%; max-width: 500px; margin: 0 auto; }
+    #result { margin-top: 15px; font-size: 1.1em; }
+    button { font-size: 1em; padding: 10px 20px; margin-top: 10px; }
   </style>
 </head>
 <body>
-
-  <h1>📦 Scan Products</h1>
-  <p>Tap “Start Scanner” and allow camera. Each QR adds its code below.</p>
-
-  <button id="start">Start Scanner</button>
-  <button id="stop" disabled>Stop Scanner</button>
+  <h1>QR Code Scanner</h1>
+  <!-- This div is where the camera feed and scanner will appear -->
   <div id="reader"></div>
-
-  <h3>Scanned Items:</h3>
-  <ul id="cart"></ul>
-
-  <button id="checkout">Checkout</button>
+  <!-- Display scanned result -->
+  <div id="result"></div>
+  <!-- Button to start the scanner -->
+  <button onclick="startScanner()">Start Scanner</button>
 
   <script>
-    let html5QrCode, scanning = false, scannedItems = [];
+    // Initialize the QR code scanner for the element with id="reader"
+    const html5QrCode = new Html5Qrcode("reader");
 
-    function updateCart() {
-      const ul = document.getElementById("cart");
-      ul.innerHTML = "";
-      scannedItems.forEach(code => {
-        const li = document.createElement("li");
-        li.textContent = code;
-        ul.appendChild(li);
-      });
-    }
+    function startScanner() {
+      // Begin scanning for QR codes using the back camera ("environment")
+      html5QrCode.start(
+        { facingMode: "environment" }, 
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText, decodedResult) => {
+          // Success callback when a QR code is scanned
+          document.getElementById('result').innerText = "Scanned Code: " + decodedText;
+          // Stop the scanner after one scan (remove this if you want continuous scanning)
+          html5QrCode.stop();
 
-    function onScanSuccess(decodedText) {
-      scannedItems.push(decodedText);
-      updateCart();
-    }
-    function onScanFailure(error) {
-      /* ignore */
-    }
-
-    async function startScanner() {
-      if (scanning) return;
-      scanning = true;
-      document.getElementById("reader").style.display = "block";
-      document.getElementById("start").disabled = true;
-      document.getElementById("stop").disabled  = false;
-
-      try {
-        const devices = await Html5Qrcode.getCameras();
-        if (!devices || !devices.length) {
-          alert("No camera found on this device.");
-          return;
+          // Send the scanned data to Google Apps Script web app
+          fetch("https://script.google.com/macros/s/AKfycbywNRYlXu8S9RR-zZj2ihRVa038_-SVCEU75sG-Y3HItY0eeBI1vSIEROhBCchCpAte/exec", {
+            method: "POST",  // use "GET" and append ?data=... if your script uses doGet
+            body: JSON.stringify({ data: decodedText }),  // send the data as JSON
+            headers: { "Content-Type": "application/json" }
+          })
+          .then(response => response.text())
+          .then(data => {
+            console.log("Server response:", data);
+            // You can update the page with `data` or handle the response as needed
+          })
+          .catch(err => {
+            console.error("Error sending data to server:", err);
+          });
+        },
+        (errorMessage) => {
+          // Error callback (scanner couldn't start or scanning stopped)
+          console.error("QR Scanner error:", errorMessage);
         }
-        html5QrCode = new Html5Qrcode("reader");
-        await html5QrCode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
-          onScanSuccess,
-          onScanFailure
-        );
-      } catch (e) {
-        console.error("Could not start camera:", e);
-        alert("Error starting camera:\n" + e);
-      }
+      );
     }
-
-    async function stopScanner() {
-      if (!scanning) return;
-      await html5QrCode.stop();
-      scanning = false;
-      document.getElementById("reader").style.display = "none";
-      document.getElementById("start").disabled = false;
-      document.getElementById("stop").disabled  = true;
-    }
-
-    document.getElementById("start")
-      .addEventListener("click", startScanner);
-    document.getElementById("stop")
-      .addEventListener("click", stopScanner);
-
-    document.getElementById("checkout")
-      .addEventListener("click", () => {
-        if (!scannedItems.length) {
-          alert("No items scanned.");
-          return;
-        }
-        fetch("https://script.google.com/macros/s/AKfycbywNRYlXu8S9RR-zZj2ihRVa038_-SVCEU75sG-Y3HItY0eeBI1vSIEROhBCchCpAte/exec", {
-          method: "POST",
-          body: new URLSearchParams({ items: scannedItems.join(",") })
-        })
-        .then(r => r.text())
-        .then(txt => {
-          alert("Checkout complete:\n" + txt);
-          scannedItems = [];
-          updateCart();
-        })
-        .catch(err => {
-          console.error("Checkout failed:", err);
-          alert("Checkout failed; check console.");
-        });
-      });
   </script>
 </body>
 </html>
-
