@@ -1,93 +1,106 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scan Products</title>
-  <!-- Include the HTML5 QR Code scanner library -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
+  <meta charset="utf-8">
+  <title>POS QR Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- 1) Load the QR-scanner from a known CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    h1 { font-size: 1.5em; }
-    #reader { width: 300px; margin-bottom: 15px; }
-    #cart { background: #f9f9f9; padding: 10px; list-style: none; }
-    #cart li { padding: 2px 0; }
+    body { font-family: sans-serif; margin: 1em; }
+    h1 { font-size: 1.4em; }
+    #reader { width: 100%; max-width: 400px; height: 300px; margin-bottom: 1em; background: #eee; }
+    #cart { background: #f4f4f4; padding: 10px; margin-bottom: 1em; list-style: none; }
+    #cart li { margin: 4px 0; }
     #checkout { padding: 8px 12px; font-size: 1em; }
   </style>
 </head>
 <body>
 
   <h1>📦 Scan Products</h1>
-  <p>Point your camera at a product’s QR code. Each scan will add the item to the cart below.</p>
-  
-  <!-- Scanner region -->
+  <p>Point your camera at a product QR. Each scan adds it to the list below.</p>
+
+  <!-- 2) This DIV will show the live video -->
   <div id="reader"></div>
-  
-  <!-- Cart display -->
+
   <h3>Scanned Items:</h3>
   <ul id="cart"></ul>
-  
-  <!-- Checkout button -->
+
   <button id="checkout">Checkout</button>
 
   <script>
-    // This array will hold scanned item codes (e.g., SKUs)
+    // Holds SKUs we scan
     let scannedItems = [];
 
-    // Update the cart list UI
-    function updateCartDisplay() {
-      const cartList = document.getElementById('cart');
-      cartList.innerHTML = "";
-      scannedItems.forEach(code => {
-        const li = document.createElement('li');
-        li.textContent = code;
-        cartList.appendChild(li);
+    // Update on-screen list
+    function updateCart() {
+      const ul = document.getElementById("cart");
+      ul.innerHTML = "";
+      scannedItems.forEach(sku => {
+        const li = document.createElement("li");
+        li.textContent = sku;
+        ul.appendChild(li);
       });
     }
 
-    // Callback when a QR code is successfully scanned
-    function onScanSuccess(decodedText, decodedResult) {
-      // `decodedText` is the data encoded in the QR (e.g., an SKU like "SKU001")
-      console.log("Scanned code:", decodedText);
+    // Called on each successful scan
+    function onScanSuccess(decodedText) {
       scannedItems.push(decodedText);
-      updateCartDisplay();
-      // (We continue scanning; do not stop the camera so multiple items can be scanned)
+      updateCart();
     }
 
-    // Callback for scan errors (optional)
-    function onScanError(errorMessage) {
-      // No action on scan failure; you could log errors here
-    }
+    // Called on scan failure (ignore)
+    function onScanFailure(error) { /* no-op */ }
 
-    // Start the camera scanner using Html5QrcodeScanner
-    let html5QrcodeScanner = new Html5QrcodeScanner(
-      "reader", { fps: 10, qrbox: 250 } );
-    html5QrcodeScanner.render(onScanSuccess, onScanError);  // Start scanning&#8203;:contentReference[oaicite:0]{index=0}
-
-    // Checkout button click handler
-    document.getElementById('checkout').addEventListener('click', () => {
-      if (scannedItems.length === 0) {
-        alert("No items to checkout.");
-        return;
-      }
-      // Send the scanned items to Google Apps Script web app
-      fetch("https://script.google.com/macros/s/AKfycbwFVcfLpJAixRnpg_5nlPEWYIXMdwYQ-hfWlvG4rWtIYwhEw0xHOMo1jvWy844eTXR-/exec", {  // <-- replace with your Apps Script URL
-        method: 'POST',
-        body: new URLSearchParams({ items: scannedItems.join(',') })
-      })
-      .then(response => response.text())
-      .then(result => {
-        alert("Checkout successful!");            // notify user
-        console.log("Server response:", result);  // log the response (for debugging)
-        scannedItems = [];      // clear cart
-        updateCartDisplay();    // update UI
-      })
-      .catch(error => {
-        console.error("Checkout error:", error);
-        alert("Checkout failed. Please try again.");
+    // Once page loads, find cameras and start streaming
+    window.addEventListener("load", () => {
+      Html5Qrcode.getCameras().then(cameras => {
+        if (!cameras || !cameras.length) {
+          alert("No camera found on this device.");
+          return;
+        }
+        // Use the back camera if available; else first camera
+        const cameraId = cameras[0].id;
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+          { deviceId: { exact: cameraId } },
+          { fps: 10, qrbox: 250 },
+          onScanSuccess,
+          onScanFailure
+        ).catch(err => {
+          console.error("Camera start error:", err);
+          alert("Could not start camera: " + err);
+        });
+      }).catch(err => {
+        console.error("GetCameras error:", err);
+        alert("Could not access camera devices: " + err);
       });
     });
-  </script>
 
+    // Checkout: send scannedItems to your Apps Script
+    document.getElementById("checkout")
+      .addEventListener("click", () => {
+        if (!scannedItems.length) {
+          alert("No items scanned.");
+          return;
+        }
+        fetch("https://script.google.com/macros/s/AKfycbywNRYlXu8S9RR-zZj2ihRVa038_-SVCEU75sG-Y3HItY0eeBI1vSIEROhBCchCpAte/exec", {
+          method: "POST",
+          body: new URLSearchParams({ items: scannedItems.join(",") })
+        })
+        .then(r => r.text())
+        .then(txt => {
+          alert("Checkout complete:\n" + txt);
+          scannedItems = [];
+          updateCart();
+        })
+        .catch(e => {
+          console.error("Checkout failed:", e);
+          alert("Checkout failed. See console.");
+        });
+      });
+  </script>
 </body>
 </html>
