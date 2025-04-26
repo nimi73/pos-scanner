@@ -71,7 +71,7 @@
         return;
       }
       // Send the scanned items to Google Apps Script web app
-      fetch("YOUR_SCRIPT_WEB_APP_URL_HERE", {  // <-- replace with your Apps Script URL
+      fetch("https://script.google.com/macros/s/AKfycbwFVcfLpJAixRnpg_5nlPEWYIXMdwYQ-hfWlvG4rWtIYwhEw0xHOMo1jvWy844eTXR-/exec", {  // <-- replace with your Apps Script URL
         method: 'POST',
         body: new URLSearchParams({ items: scannedItems.join(',') })
       })
