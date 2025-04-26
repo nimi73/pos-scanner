@@ -2,64 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>QR Scanner POS</title>
-  <!-- Load the HTML5 QR Code library (version 2.3.8) from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <title>QR Scanner Checkout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    /* Basic mobile-friendly styling */
-    body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-    h1 { font-size: 1.5em; }
-    #reader { width: 100%; max-width: 500px; margin: 0 auto; }
-    #result { margin-top: 15px; font-size: 1.1em; }
-    button { font-size: 1em; padding: 10px 20px; margin-top: 10px; }
+    /* Basic styling for clarity and mobile optimization */
+    body { font-family: sans-serif; margin: 20px; }
+    #reader { width: 100%; max-width: 400px; margin: 0 auto 20px; }
+    #scanned-items { list-style: none; padding-left: 0; }
+    #scanned-items li { background: #f0f0f0; margin: 5px 0; padding: 8px; border-radius: 4px; }
+    #checkout-btn { font-size: 18px; padding: 10px 20px; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>QR Code Scanner</h1>
-  <!-- This div is where the camera feed and scanner will appear -->
-  <div id="reader"></div>
-  <!-- Display scanned result -->
-  <div id="result"></div>
-  <!-- Button to start the scanner -->
-  <button onclick="startScanner()">Start Scanner</button>
-
+  <h1>QR Scanner</h1>
+  <div id="reader"><!-- QR code scanner will appear here --></div>
+  
+  <h2>Scanned Items:</h2>
+  <ul id="scanned-items"></ul>
+  
+  <button id="checkout-btn">Checkout</button>
+  
+  <!-- Include the HTML5 QR Code library -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
   <script>
-    // Initialize the QR code scanner for the element with id="reader"
-    const html5QrCode = new Html5Qrcode("reader");
-
-    function startScanner() {
-      // Begin scanning for QR codes using the back camera ("environment")
-      html5QrCode.start(
-        { facingMode: "environment" }, 
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText, decodedResult) => {
-          // Success callback when a QR code is scanned
-          document.getElementById('result').innerText = "Scanned Code: " + decodedText;
-          // Stop the scanner after one scan (remove this if you want continuous scanning)
-          html5QrCode.stop();
-
-          // Send the scanned data to Google Apps Script web app
-          fetch("https://script.google.com/macros/s/AKfycbywNRYlXu8S9RR-zZj2ihRVa038_-SVCEU75sG-Y3HItY0eeBI1vSIEROhBCchCpAte/exec", {
-            method: "POST",  // use "GET" and append ?data=... if your script uses doGet
-            body: JSON.stringify({ data: decodedText }),  // send the data as JSON
-            headers: { "Content-Type": "application/json" }
-          })
-          .then(response => response.text())
-          .then(data => {
-            console.log("Server response:", data);
-            // You can update the page with `data` or handle the response as needed
-          })
-          .catch(err => {
-            console.error("Error sending data to server:", err);
-          });
-        },
-        (errorMessage) => {
-          // Error callback (scanner couldn't start or scanning stopped)
-          console.error("QR Scanner error:", errorMessage);
-        }
-      );
+    // TODO: Replace with your actual Google Apps Script Web App URL (ending in /exec)
+    const scriptURL = "https://script.google.com/macros/s/AKfycbywNRYlXu8S9RR-zZj2ihRVa038_-SVCEU75sG-Y3HItY0eeBI1vSIEROhBCchCpAte/exec";
+    
+    // Array to store scanned SKU codes
+    let scannedSkus = [];
+    // Track last scanned code to avoid immediate duplicate reads
+    let lastScannedCode = null;
+    
+    // Handle successful scan: add the SKU to list and array
+    function onScanSuccess(decodedText, decodedResult) {
+      if (decodedText === lastScannedCode) {
+        // If the same code is scanned consecutively, skip to prevent duplicates
+        return;
+      }
+      lastScannedCode = decodedText;
+      // Add SKU to array and update the visible list
+      scannedSkus.push(decodedText);
+      const list = document.getElementById('scanned-items');
+      const item = document.createElement('li');
+      item.textContent = decodedText;
+      list.appendChild(item);
     }
+    
+    // Handle scan errors (optional: just log to console here)
+    function onScanError(errorMessage) {
+      console.warn("Scan error: ", errorMessage);
+    }
+    
+    // Initialize the QR code scanner with camera
+    const html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader", { fps: 10, qrbox: 250 }, false);
+    html5QrcodeScanner.render(onScanSuccess, onScanError);  // Start scanning&#8203;:contentReference[oaicite:0]{index=0}
+    
+    // Handle Checkout button click: send scanned SKUs to Google Apps Script
+    document.getElementById('checkout-btn').addEventListener('click', () => {
+      if (scannedSkus.length === 0) {
+        alert("No items scanned.");
+        return;
+      }
+      // Send the array of SKUs to the Apps Script web app via POST request
+      fetch(scriptURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skus: scannedSkus })
+      })
+      .then(response => {
+        if (!response.ok) throw new Error("Network response was not ok");
+        return response.text(); // read server response (if any)
+      })
+      .then(() => {
+        // On success: clear the list and array, notify user
+        scannedSkus = [];
+        lastScannedCode = null;
+        document.getElementById('scanned-items').innerHTML = "";
+        alert("Checkout completed");
+      })
+      .catch(err => {
+        console.error("Checkout error:", err);
+        alert("Checkout failed: " + err.message);
+      });
+    });
   </script>
 </body>
 </html>
